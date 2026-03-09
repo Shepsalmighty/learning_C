@@ -91,11 +91,9 @@ void free_block_memory(block_t *block)
     free(block->match_data);
     free(block->out_file_name);
     // files opened need to be closed not free'd (you're welcome. Past you. kisses xx)
-    printf("file\t%p\n", block->out_file);
     if (block->out_file)
     {
         fclose(block->out_file);
     }
-    printf("block\t%p\n", block);
     // free(block);
 }
