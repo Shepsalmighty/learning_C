@@ -12,4 +12,5 @@ and lines not matching pattern3 (-v non matching) written to outfile_2
 lines not matched by any group are written to stdout
 
 much wow
+
 big impress
