@@ -8,15 +8,37 @@
 #include <unistd.h>
 #define HERE fprintf(stderr, "Line %i\n in File %s\n" , __LINE__, __FILE__)
 
-int main(int argc, char **argv)
+void help( FILE * const output, char const * const program_name)
 {
+    fprintf(output, "%s functions similarly to grep, except it can search for multiple patterns and write to multiple output files in one pass\n\n"
+                        
+                    "usage:\n"
+                    "gerp [option] [pattern_1] [outfile_1] [option] [pattern_2] [outfile_2]\n\n"
+
+                    "examples:\n"
+                    "( echo foo ; seq 0 99 ; echo bar ) | ./gerp -e '[02468]$' -o even -e '[13579]$' -o odd > not_a_number\n"
+
+                    "gerp -e foo -e bar -e baz -o foos-bars-and-bazs.txt > everything-else\n\n"
+                    
+                   "options:\n"
+                    "-i, ignore case in pattern\n"
+                    "-e, search for this pattern\n"
+                    "-w, exact word match\n"
+                    "-o, write to output file\n"
+                    "-v, select non matching\n\n"
+                    "Copyright 2026 Shepsalresearchanddevelopmenty\n", program_name);
+}
+
+int main(int argc, char **argv)
+{   
+    char * program_name = argv[0];
     struct block * current_block; 
     size_t number_of_blocks = 1;
     block_t * blocks = malloc( number_of_blocks * sizeof(*blocks) );
 
     if (!blocks)
     {
-        perror(argv[0]);
+        perror(program_name);
         exit(EXIT_FAILURE);
     }
 
@@ -38,6 +60,7 @@ int main(int argc, char **argv)
         "o:" // write to this file
         "v"  // select non matching lines
         "w"  // word regex -- exact word match (e.g. mat in match does not work)
+        "h"  // help info
         "";
 
     int opt;
@@ -52,7 +75,7 @@ int main(int argc, char **argv)
             // if error is truthy function failed -> free memory
             if (error)
             {
-                perror(argv[0]);
+                perror(program_name);
                 // free each pattern, free the lists of patterns, and then free
                 // the blocks. and the list of blocks.
                 for (size_t block = 0; block < number_of_blocks; block++)
@@ -65,6 +88,15 @@ int main(int argc, char **argv)
             }
             
             break;
+
+        case 'h':
+            if( argc == 2 )
+            {
+                help(stdout, argv[0]);   
+                exit(EXIT_SUCCESS);
+            }
+            break;
+
 
         case 'i':
             current_block->i = true;
@@ -83,7 +115,7 @@ int main(int argc, char **argv)
             
             if (!current_block->out_file_name)
             {
-                perror(argv[0]);
+                perror(program_name);
                 for (size_t block = 0; block < number_of_blocks; block++)
                 {   
                     free_block_memory(&blocks[block]);
@@ -100,7 +132,7 @@ int main(int argc, char **argv)
 
             if( !temp_pointer)
             {   
-                perror(argv[0]);
+                perror(program_name);
                 //if temp_pointer failed then number_of_blocks is 1 too high so gets decremented
                 //we do NOT want to free unknown sections of memeory
                 number_of_blocks--;
@@ -124,7 +156,14 @@ int main(int argc, char **argv)
             current_block->v = false;
             current_block->w = false;
             break;
+        
+        case '?':
+            help(stderr, program_name);
+            exit(EXIT_FAILURE);
+
+        break;
         }
+
     }
     
     if ( blocks[number_of_blocks - 1].patterns ) 
@@ -146,7 +185,7 @@ int main(int argc, char **argv)
         blocks[file].out_file = fopen(blocks[file].out_file_name, "w");
         if( ! blocks[file].out_file)
         {
-           perror(argv[0]);
+           perror(program_name);
            for (size_t block = 0; block < number_of_blocks; block++)
                 {
                     free_block_memory(&blocks[block]);
@@ -167,7 +206,7 @@ int main(int argc, char **argv)
         {   
             if( ferror(stdin) )
             {   
-                perror(argv[0]);
+                perror(program_name);
                 free(lineptr);
                 break;
             }
@@ -214,7 +253,7 @@ int main(int argc, char **argv)
                         continue;
                     }
 
-                    fprintf(stderr, "%s: pcre2_match() returned %i in %s, line %i\n" , argv[0] , rc , __FILE__ , __LINE__ );
+                    fprintf(stderr, "%s: pcre2_match() returned %i in %s, line %i\n" , program_name , rc , __FILE__ , __LINE__ );
                     free(lineptr);
                     for (size_t block = 0; block < number_of_blocks; block++)
                     {
