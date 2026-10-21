@@ -1,4 +1,5 @@
 #include "recovery.h"
+#include "GF_lookup_tables.h"
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,57 +24,11 @@
 // in stripe 0, P is always the last drive e.g. stripe 0 = [[Q, D1, D2, P]],
 // stripe 1 = [[D1, D2, P, Q]] etc WRAPPING AROUND
 
-#if 0
-// return the index of P syndrome
-size_t P_location(size_t stripe_number, size_t number_of_drives)
-{
-    return number_of_drives - (stripe_number % number_of_drives) - 1;
-}
-
-int P_XOR( char ** sorted_blocks, int number_of_drives, int stripe_size, char * recovery_space )
-{   
-    if( ! recovery_space )
-    {   
-        fprintf(stderr, "no recovery_space memory");
-        return -1;
-    }
-    
-    int count = 0;
-    //sorted_blocks == [P, Q, D, D]
-    for( int offset = 0; offset < stripe_size; offset ++)
-    {   
-        recovery_space[offset] = 0;
-        
-        for( int drive = 0; drive < number_of_drives; drive ++ )
-        {
-            if( drive == 1 || sorted_blocks[drive] == NULL )
-            {
-                continue;
-            }   
-            recovery_space[offset] ^= sorted_blocks[drive][offset];
-            count ++;
-        }
-    }
-    return 0;
-}
-
-int Q_XOR( char ** sorted_blocks, int number_of_drives, int stripe_size, char * recovery_space )
-{
-    //The Q_XOR function looks very much like the P_XOR function, except sorted_blocks[drive][offset] needs to be GF'ed before the XOR.
-    //And the recovery_space we get back is GF'ed, so we need to undo that.
-}
-//inside recovery()
-    my_var = P_XOR(example)>
-    if( my_var < 0 )
-        fprintf something went wrong
-        fclose
-        free
-    recovery_space[index] = my_var
-#endif
 
 #if 1
-int recovery( char ** sorted_blocks, int number_of_drives, int stripe_size, char ** recovery_space )
+int recovery( uint8_t ** sorted_blocks, size_t number_of_drives, size_t stripe_size, uint8_t * recovery_space_0, uint8_t * recovery_space_1 )
 {   
+    (void) (recovery_space_1);
     // this function will do both P (XOR) recovery from N-data blocks AND Galois Field stuff
     // if one of sorted_blocks[2] to sorted_blocks[N] is NULL = XOR
     // if two indexes are NULL GF recovery
@@ -85,19 +40,19 @@ int recovery( char ** sorted_blocks, int number_of_drives, int stripe_size, char
     // 2 failed drives - Q & Data --- P XOR existing data (Q doesn't matter)
     // 2 failed drives - Data & Data --- GF hell :'(
     // 3 failed drives - cry
-    int number_of_failed_drives = 0; 
-    int failed_drives[2];
-    for( int index = 0; index < number_of_drives; index ++)
+    size_t number_of_failed_drives = 0; 
+    size_t failed_drives[2];
+    for( size_t index = 0; index < number_of_drives; index ++)
     {
         if( sorted_blocks[index] == NULL )
         {   
-            failed_drives[number_of_failed_drives] = index;
-            number_of_failed_drives ++;
             if( number_of_failed_drives > 2 )
             {   
                 fprintf(stderr, "AAAAH");
                 return 1;
             }
+            failed_drives[number_of_failed_drives] = index;
+            number_of_failed_drives ++;
         }
     }
     if( number_of_failed_drives == 0 )
@@ -108,20 +63,38 @@ int recovery( char ** sorted_blocks, int number_of_drives, int stripe_size, char
     {   
         if( failed_drives[0] >= 2 ) //we have 1 failed drive and it's index is 2 or more == Data missing
         {
-            return P_XOR( sorted_blocks, number_of_drives, stripe_size, recovery_space[0] );
+            return P_XOR( sorted_blocks, number_of_drives, stripe_size, recovery_space_0 );
         }
         return 0; // only P or Q missing - no data to recover
     }
     if( number_of_failed_drives == 2)
     {
         if( failed_drives[0] == 0 && failed_drives[1] == 1 )
-        {
+        {   
+            // failed_drives [0] & [1] are P and Q syndrome, no data lost, nothing to recover
             return 0;
         }
-        if( failed_drives[0] == 1 ) // 2 failed drives, 1st is Q the other must be data
+        if( failed_drives[0] == 1 ) // 2 failed drives, Q failed, but P exists so we can recover using P_XOR
         {
-            return P_XOR( sorted_blocks, number_of_drives, stripe_size, recovery_space[0] );
+            return P_XOR( sorted_blocks, number_of_drives, stripe_size, recovery_space_0 );
         } 
+        if( failed_drives[0] == 0 ) // 2 failed drives, P and Data drives have failed
+        {
+            int errors = Q_XOR( sorted_blocks, number_of_drives, stripe_size, recovery_space_1 );
+
+            if( errors )
+            {
+                fprintf(stderr, "error here %i", __LINE__);
+                return -1;
+            }
+            
+            for( size_t offset = 0; offset < stripe_size; offset ++)
+            {
+                recovery_space_1[offset] = unGF_array[failed_drives[1]][recovery_space_1[offset]];
+            }
+            return 0;
+
+        }
         return 69; // 2 drives missing which aren't Q and a data
     }
     return 1;
@@ -213,7 +186,7 @@ int main( int argc, char **argv )
         exit(EXIT_FAILURE);
     }
 
-    char ** blocks_from_drive = malloc( number_of_drives * sizeof( * blocks_from_drive) );
+    uint8_t ** blocks_from_drive = malloc( number_of_drives * sizeof( * blocks_from_drive) );
     if( ! blocks_from_drive )
     {
         perror(argv[0]);
@@ -256,7 +229,7 @@ int main( int argc, char **argv )
         }
     }
 
-    char ** sorted_blocks = malloc( number_of_drives * sizeof ( * sorted_blocks ) );  // data is stored thusly sorted_blocks[P,Q,D1,D2,D-N]
+    uint8_t ** sorted_blocks = malloc( number_of_drives * sizeof ( * sorted_blocks ) );  // data is stored thusly sorted_blocks[P,Q,D1,D2,D-N]
     if( ! sorted_blocks )
     {
         perror(argv[0]);
@@ -270,7 +243,7 @@ int main( int argc, char **argv )
         exit(EXIT_FAILURE);
     }
 
-    char * recovery_space[2]; 
+    uint8_t * recovery_space[2]; 
 
     recovery_space[0] = malloc( stripe_size );
 
@@ -306,6 +279,9 @@ int main( int argc, char **argv )
     
     //read data from drives
     size_t stripe_number = 0; 
+    
+    size_t failed_real_drive[2];
+    size_t failed_sorted_blocks[2];
 
     do
     {   
@@ -324,6 +300,8 @@ int main( int argc, char **argv )
         if( result != stripe_size )
         {
             sorted_blocks[0] = NULL;
+            failed_real_drive[ errors ] = P; //keeps track of which actual drive failed  
+            failed_sorted_blocks[ errors ] = 0; //keeps track of which sorted_block[P,Q,D1,DN] failed
             errors ++;
             fprintf(stderr, "failed to read from drive# %zu\n", P);
         }
@@ -338,6 +316,8 @@ int main( int argc, char **argv )
         if( result != stripe_size )
         {
             sorted_blocks[1] = NULL;
+            failed_real_drive[ errors ] = Q; //keeps track of which actual drive failed  
+            failed_sorted_blocks[ errors ] = 1; //keeps track of which sorted_block[P,Q,D1,DN] failed
             errors ++;
             fprintf(stderr, "failed to read from drive# %zu\n", Q);
 
@@ -356,6 +336,11 @@ int main( int argc, char **argv )
             if( result != stripe_size )
             {
                 sorted_blocks[index] = NULL;
+                if( errors < 2 )
+                {
+                    failed_real_drive[ errors ] = data_block_index; //keeps track of which actual drive failed  
+                    failed_sorted_blocks[ errors ] = index; //keeps track of which sorted_block[P,Q,D1,DN] failed
+                }
                 errors ++;
                 fprintf(stderr, "failed to read from drive# %zu\n", data_block_index);
             }
@@ -364,30 +349,42 @@ int main( int argc, char **argv )
                 sorted_blocks[index] = blocks_from_drive[data_block_index];
             }
         }
+        
+        if( errors > 2 )
+        {
+           break; 
+        }
+
+#if 1
+        
         if( errors == 1 )
         {
-            int success_is_a_zero = P_XOR(sorted_blocks, number_of_drives, stripe_size, recovery_space[0]);
+            int success_is_a_zero =  recovery( sorted_blocks, 
+                                               number_of_drives, stripe_size, 
+                                               blocks_from_drive[failed_real_drive[0]], recovery_space[1] );
+
+            if( success_is_a_zero != 0 )
+            {
+                fprintf(stderr, "aaaaah\n");
+                break;
+            }
+            sorted_blocks[failed_sorted_blocks[0]] = blocks_from_drive[failed_real_drive[0]];
         }
-        //we can still recover data with 2 failed drives, if we reach 3 we're done
-        if( errors > 2 )
+      
+        if( errors == 2 )
         {   
-            break;
-        }
-#if 0        
-        if( errors )
-        {  
-            CALL RECOVERY()!!!!!!!! not P_XOR 
+            int success_is_a_zero = recovery( sorted_blocks,
+                                              number_of_drives, stripe_size,
+                                              blocks_from_drive[failed_real_drive[0]], blocks_from_drive[failed_real_drive[1]] );
 
-            int success_is_a_zero = P_XOR(sorted_blocks, number_of_drives, stripe_size, recovery_space[0]);
-            if recovery is successful, then write to the known missing data block NOT to sorted_blocks[index]
-            sorted_blocks[index] is NULL
-
-            stderr - We need to write it to the block for the missing drive and set sorted_block[ index ] 
-            to point to that block (as if we had read it from disk).
-            blocks_from_drive[ missing_drive ] 
-            is the buffer.
+            if( success_is_a_zero != 0 )
+            {
+                fprintf(stderr, "panic!!!\n");
+                break;   
+            }
             
-
+            sorted_blocks[failed_sorted_blocks[0]] = blocks_from_drive[failed_real_drive[0]];
+            sorted_blocks[failed_sorted_blocks[1]] = blocks_from_drive[failed_real_drive[1]];
         }
 #endif
         for( size_t index = 2; index < number_of_drives; index ++)
@@ -401,10 +398,9 @@ int main( int argc, char **argv )
             fwrite( sorted_blocks[index], 1, stripe_size, stdout );
         }
         
-        stripe_number ++; 
+        stripe_number ++;
       
     } while( true ); 
-
 
 
     //clean up and exit

@@ -1,7 +1,9 @@
 #ifndef RECOVERY_H
     #define RECOVERY_H
-        int P_XOR( char ** sorted_blocks, int number_of_drives, int stripe_size, char * recovery_space );
-        int Q_XOR( char ** sorted_blocks, int number_of_drives, int stripe_size, char * recovery_space );
+    #include<stdint.h>
+    #include<stddef.h>
+        int P_XOR( uint8_t ** sorted_blocks, size_t number_of_drives, size_t stripe_size, uint8_t * recovery_space );
+        int Q_XOR( uint8_t ** sorted_blocks, size_t number_of_drives, size_t stripe_size, uint8_t * recovery_space );
 
 #endif // ! RECOVERY_H
 
