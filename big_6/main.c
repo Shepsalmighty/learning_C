@@ -76,7 +76,7 @@ int recovery( uint8_t ** sorted_blocks, size_t number_of_drives, size_t stripe_s
         }
         if( failed_drives[0] == 1 ) // 2 failed drives, Q failed, but P exists so we can recover using P_XOR
         {
-            return P_XOR( sorted_blocks, number_of_drives, stripe_size, recovery_space_0 );
+            return P_XOR( sorted_blocks, number_of_drives, stripe_size, recovery_space_1 );
         } 
         if( failed_drives[0] == 0 ) // 2 failed drives, P and Data drives have failed
         {
@@ -93,9 +93,69 @@ int recovery( uint8_t ** sorted_blocks, size_t number_of_drives, size_t stripe_s
                 recovery_space_1[offset] = unGF_array[failed_drives[1]][recovery_space_1[offset]];
             }
             return 0;
-
         }
-        return 69; // 2 drives missing which aren't Q and a data
+        else  //Galois hell - both missing drives are data
+        { 
+            /*
+             * todo
+             We're looking at bytes, so we know the value of a byte from failed drive M and a byte from failed drive N 
+             must be 
+             0 <= M <= 255 and 0 <= N <= 255.
+            If we run through each possible value of M and calculate N (remember P_mark?), 
+            we can check whether GF of M XOR GF of N is equal to Q_mark, 
+            if so, we have found the missing M and N, otherwise try the next value of M.
+
+            P_mark = M XOR N ---- P_XOR writes P_mark to the recovery_space you supply it
+            Q_mark = GF(M) XOR GF(N) ---- Q_XOR writes Q_mark to the recovery_space you supply it
+
+            !!!!!!!!USE P_XOR AND Q_XOR FOR THIS FFS!!!!!!!!!!!
+
+            */
+#if 0           
+            if( P_LOCATION(stripe_number, number_of_drives) < number_of_drives - 2 )
+            {
+
+            }
+#endif
+            int errors = P_XOR(sorted_blocks, number_of_drives, stripe_size, recovery_space_0);
+            if( errors )
+            {
+                fprintf(stderr, "P_XOR failed during Galois hell\n");
+                return errors;
+            }
+            errors = Q_XOR(sorted_blocks, number_of_drives, stripe_size, recovery_space_1);
+            if( errors )
+            {
+                fprintf(stderr, "Q_XOR failed during Galois hell\n");
+                return errors;
+            }
+
+            for( size_t offset = 0; offset < stripe_size; offset ++)
+            {   
+                size_t m;
+                for( m = 0; m < 256; m ++ )
+                {
+                    size_t n = recovery_space_0[offset] ^ m;
+                    
+                    size_t temp_var = GF_array[failed_drives[0]][m] ^ GF_array[failed_drives[1]][n];
+
+                    if( temp_var == recovery_space_1[offset] )
+                    {   
+                        fprintf(stderr,"got to 139 in recovery()\n");
+                        recovery_space_0[offset] = m;
+                        recovery_space_1[offset] = n;
+                        break;
+                    }
+                }
+                if( m == 256 )
+                {
+                    fprintf(stderr, "no data recovered at offset[%zu], sucks to suck\n", offset);
+                    break;
+                }
+            }
+            return 0;
+        }
+
     }
     return 1;
 }
@@ -356,6 +416,34 @@ int main( int argc, char **argv )
         }
 
 #if 1
+        if( errors == 0 )
+        //sanity check P and Q syndromes 
+        {
+            int success_is_a_zero = P_XOR( sorted_blocks, number_of_drives, stripe_size, recovery_space[0] ); 
+            if( success_is_a_zero != 0 )
+            {
+                fprintf(stderr, "P_XOR FOUND A PROBLEM\n");
+            }
+            success_is_a_zero = Q_XOR(sorted_blocks, number_of_drives, stripe_size, recovery_space[1] );
+            if( success_is_a_zero != 0 )
+            {
+                fprintf(stderr, "Q_XOR FOUND A PROBLEM\n");
+            }
+
+            for( size_t offset = 0; offset < stripe_size; offset ++)
+            {
+                if( recovery_space[0][offset] != 0 )
+                {
+                    fprintf(stderr, "wrong P at offset %zu \n", offset);
+                }
+                if( recovery_space[1][offset] != 0 )
+                {
+                    fprintf(stderr, "wrong Q at offset %zu \n", offset);
+                }
+
+            }
+
+        }
         
         if( errors == 1 )
         {
@@ -376,13 +464,16 @@ int main( int argc, char **argv )
             int success_is_a_zero = recovery( sorted_blocks,
                                               number_of_drives, stripe_size,
                                               blocks_from_drive[failed_real_drive[0]], blocks_from_drive[failed_real_drive[1]] );
-
+            printf("P at %zu", P_LOCATION(stripe_number, number_of_drives));
             if( success_is_a_zero != 0 )
             {
                 fprintf(stderr, "panic!!!\n");
                 break;   
             }
-            
+ 
+// TODO - We have one stripe that works, one more working, then one complete garbage, then one where one block works and the other doesn't.
+// TODO - it looks like some of the text we are getting is Base64 endcoded...      
+// TODO - garbage starts at stripe 144 ( P is index 3, Q is index 0 ) - so we're currently putting Q before P incorrectly see line 115ish rec_1 rec_0 etc
             sorted_blocks[failed_sorted_blocks[0]] = blocks_from_drive[failed_real_drive[0]];
             sorted_blocks[failed_sorted_blocks[1]] = blocks_from_drive[failed_real_drive[1]];
         }

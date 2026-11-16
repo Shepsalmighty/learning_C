@@ -48,11 +48,14 @@ all:	${EXE}
 clean:
 	rm -f ${OBJS}
 	rm -f ${DEPS}
+	rm -f ${HELPER_OBJS}
+	rm -f ${HELPER_DEPS}
 
 .PHONY:	clean 
 
 distclean:	clean
 	rm -f ${EXE}
+	rm -f ${HELPER_EXE}
 
 .PHONY:	distclean
 
@@ -62,7 +65,7 @@ ${EXE}: ${OBJS}
 %.o:	%.c
 	${CC} ${CFLAGS} -c $< -o $@
 
-GF_lookup_tables.c GF_lookup_tables.h: ${HELPER_EXE}
+GF_lookup_tables.c GF_lookup_tables.h : ${HELPER_EXE}
 	./${HELPER_EXE}
 
 main.o: main.c GF_lookup_tables.h recovery.h

@@ -68,8 +68,9 @@ int main ( void )
     
     fprintf( h_file, "#ifndef GF_LOOKUP_TABLES_H\n");
     fprintf( h_file, "\t#define GF_LOOKUP_TABLES_H\n");
-    fprintf( h_file, "\tuint8_t GF_array[256][256];\n");
-    fprintf( h_file, "\tuint8_t unGF_array[256][256];\n");
+    fprintf( h_file, "\t#include<stdint.h>\n");
+    fprintf( h_file, "\textern uint8_t GF_array[256][256];\n");
+    fprintf( h_file, "\textern uint8_t unGF_array[256][256];\n");
     fprintf( h_file, "#endif // ! GF_LOOKUP_TABLES_H\n");
 
     fclose( h_file );
@@ -77,8 +78,4 @@ int main ( void )
     exit( EXIT_SUCCESS );
 
 
-        //TODO: 
-
-        //add GF_lookup_tables(correct_suffix) to __main__.c
-        //
 }
